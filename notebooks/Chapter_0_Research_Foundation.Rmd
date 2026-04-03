@@ -1,6 +1,10 @@
 ---
 title: "Modelling the Impact of Macroeconomic Factors on Insurance Premiums in Kenya"
-author: "Whitney Kemuma"
+subtitle: "Chapter 0 - Reseach Foundation"
+author: 
+ - "Whitney Kemuma"
+ - "Shebunah Nyairabu"
+supervisor: "Dr Cynthia Mwende"
 date: "2025"
 output:
   pdf_document:

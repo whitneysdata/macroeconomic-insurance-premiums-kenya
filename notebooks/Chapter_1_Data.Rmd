@@ -1,0 +1,300 @@
+---
+title: "Modelling the Impact of Macroeconomic Factors on Insurance Premiums in Kenya"
+subtitle: "Chapter 1 - Data"
+author:
+ - "Whitney Kemuma"
+ - "Shebunah Nyairabu"
+supervisor: "Dr Cynthia Mwende"
+date: "2025"
+output:
+  pdf_document:
+    latex_engine: xelatex
+    toc: true
+    toc_depth: 3
+    number_sections: true
+    fig_caption: true
+header-includes:
+  - \usepackage{booktabs}
+  - \usepackage{float}
+  - \usepackage{amsmath}
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo    = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.pos = "H"
+)
+```
+
+\newpage
+
+# Chapter 1: Data Loading, Cleaning and Descriptive Statistics
+
+## 1.1 Introduction
+
+This chapter covers the full data preparation pipeline for this study.
+The dataset consists of annual observations from 2015 to 2024 covering
+four variables: insurance premiums, inflation rate, GDP growth rate, and
+interest rate. All data was sourced from the Insurance Regulatory Authority
+(IRA), Kenya National Bureau of Statistics (KNBS), and the Central Bank
+of Kenya (CBK), as documented in Chapter 0.
+
+The steps in this chapter are:
+
+| Step | Activity |
+|------|----------|
+| 1.2 | Load required libraries |
+| 1.3 | Load and inspect the dataset |
+| 1.4 | Data cleaning and validation |
+| 1.5 | Descriptive statistics |
+| 1.6 | Variable definitions and measurement |
+
+---
+
+## 1.2 Load Required Libraries
+```{r libraries}
+# Core data manipulation and visualisation
+library(ggplot2)      # Data visualisation
+library(dplyr)        # Data manipulation
+library(knitr)        # Table formatting
+library(kableExtra)   # Enhanced table styling
+
+# Time series packages
+library(forecast)     # ARIMAX modelling and forecasting
+library(tseries)      # Stationarity testing (ADF)
+library(TSA)          # Time series tools
+library(lmtest)       # Ljung-Box and Granger causality tests
+
+# Regression diagnostics
+library(car)          # VIF multicollinearity test
+library(corrplot)     # Correlation matrix plots
+
+cat("All libraries loaded successfully.\n")
+```
+
+---
+
+## 1.3 Load and Inspect the Dataset
+```{r load-data}
+# Load the dataset from the data/ folder
+# The path goes up one level from scripts/ into the project root
+# then into data/
+df <- read.csv("../data/insurance_data.csv", stringsAsFactors = FALSE)
+
+# Display raw structure
+cat("Dataset dimensions:", nrow(df), "rows x", ncol(df), "columns\n\n")
+cat("Column names (raw):\n")
+print(names(df))
+```
+```{r clean-names}
+# Clean column names — remove whitespace and special characters
+# from the raw CSV headers
+names(df) <- c(
+  "Year",
+  "Premium",
+  "Inflation",
+  "GDP_Growth",
+  "Interest_Rate"
+)
+
+cat("Cleaned column names:\n")
+print(names(df))
+cat("\nFirst 5 rows:\n")
+print(head(df, 5))
+```
+```{r data-types}
+# Check data types
+cat("Data types per column:\n")
+str(df)
+```
+
+---
+
+## 1.4 Data Cleaning and Validation
+```{r missing-values}
+# Check for missing values
+missing_count <- colSums(is.na(df))
+cat("Missing values per column:\n")
+print(missing_count)
+
+if (sum(missing_count) == 0) {
+  cat("\nNo missing values found. Dataset is complete.\n")
+} else {
+  cat("\nWarning: Missing values detected. Review before modelling.\n")
+}
+```
+```{r duplicates}
+# Check for duplicate rows
+dup_count <- sum(duplicated(df))
+cat("Duplicate rows:", dup_count, "\n")
+
+if (dup_count == 0) {
+  cat("No duplicates found.\n")
+}
+```
+```{r range-validation}
+# Validate numeric ranges — flag implausible values
+cat("Variable ranges:\n")
+cat("  Year          :", min(df$Year), "—", max(df$Year), "\n")
+cat("  Premium (KES) :", min(df$Premium), "—", max(df$Premium), "\n")
+cat("  Inflation (%)  :", min(df$Inflation), "—", max(df$Inflation), "\n")
+cat("  GDP Growth (%) :", min(df$GDP_Growth), "—", max(df$GDP_Growth), "\n")
+cat("  Interest Rate (%):", min(df$Interest_Rate), "—", max(df$Interest_Rate), "\n")
+
+# Flag the 2020 negative GDP as expected (COVID-19)
+cat("\nNote: GDP Growth of", df$GDP_Growth[df$Year == 2020],
+    "in 2020 is consistent with COVID-19 economic contraction.\n")
+```
+```{r full-dataset-table}
+# Display the complete cleaned dataset as a formatted table
+kable(df,
+      col.names = c("Year", "Premium (KES)", "Inflation (%)",
+                    "GDP Growth (%)", "Interest Rate (%)"),
+      caption   = "Complete Dataset: Kenya Insurance Premiums and
+                   Macroeconomic Indicators (2015-2024)",
+      booktabs  = TRUE,
+      align     = c("c","r","r","r","r")) %>%
+  kable_styling(
+    latex_options = c("striped", "hold_position"),
+    font_size     = 11
+  ) %>%
+  row_spec(6, bold = TRUE, color = "red",
+           hline_after = FALSE) %>%  # Highlight 2020 COVID year
+  footnote(
+    general = "Red row (2020) marks the COVID-19 economic contraction year.
+               Source: IRA, KNBS, CBK (2015-2024).",
+    footnote_as_chunk = TRUE
+  )
+```
+
+---
+
+## 1.5 Descriptive Statistics
+```{r descriptive-stats}
+# Compute descriptive statistics for all numeric variables
+desc_stats <- data.frame(
+  Variable = c("Premium (KES)", "Inflation (%)",
+               "GDP Growth (%)", "Interest Rate (%)"),
+  N        = rep(nrow(df), 4),
+  Mean     = c(mean(df$Premium),      mean(df$Inflation),
+               mean(df$GDP_Growth),   mean(df$Interest_Rate)),
+  Median   = c(median(df$Premium),    median(df$Inflation),
+               median(df$GDP_Growth), median(df$Interest_Rate)),
+  SD       = c(sd(df$Premium),        sd(df$Inflation),
+               sd(df$GDP_Growth),     sd(df$Interest_Rate)),
+  Min      = c(min(df$Premium),       min(df$Inflation),
+               min(df$GDP_Growth),    min(df$Interest_Rate)),
+  Max      = c(max(df$Premium),       max(df$Inflation),
+               max(df$GDP_Growth),    max(df$Interest_Rate))
+)
+
+# Round numeric columns
+desc_stats[, 3:7] <- round(desc_stats[, 3:7], 3)
+
+kable(desc_stats,
+      caption  = "Descriptive Statistics: All Variables (2015-2024)",
+      booktabs = TRUE,
+      align    = c("l","c","r","r","r","r","r")) %>%
+  kable_styling(
+    latex_options = c("striped", "hold_position"),
+    font_size     = 10
+  )
+```
+```{r interpret-desc, echo=FALSE}
+cat("Key observations from descriptive statistics:\n\n")
+
+cat("Premium:\n")
+cat("  Mean KES", round(mean(df$Premium), 0),
+    "| Range KES", min(df$Premium), "to KES", max(df$Premium), "\n")
+cat("  Premiums rose by", round((max(df$Premium) -
+    min(df$Premium)) / min(df$Premium) * 100, 1),
+    "% over the study period.\n\n")
+
+cat("Inflation:\n")
+cat("  Mean", round(mean(df$Inflation), 2),
+    "% | SD", round(sd(df$Inflation), 2), "%\n")
+cat("  Peaked at", max(df$Inflation), "% in",
+    df$Year[which.max(df$Inflation)],
+    "and dropped to", min(df$Inflation), "% in",
+    df$Year[which.min(df$Inflation)], "\n\n")
+
+cat("GDP Growth:\n")
+cat("  Mean", round(mean(df$GDP_Growth), 2), "%\n")
+cat("  Only negative value:", min(df$GDP_Growth),
+    "% in", df$Year[which.min(df$GDP_Growth)],
+    "(COVID-19 contraction)\n\n")
+
+cat("Interest Rate:\n")
+cat("  Declined monotonically from", max(df$Interest_Rate),
+    "% in", df$Year[which.max(df$Interest_Rate)],
+    "to", min(df$Interest_Rate), "% in",
+    df$Year[which.min(df$Interest_Rate)], "\n")
+cat("  Total decline:", max(df$Interest_Rate) -
+    min(df$Interest_Rate), "percentage points\n")
+```
+
+---
+
+## 1.6 Variable Definitions and Measurement
+```{r variable-table, echo=FALSE}
+var_table <- data.frame(
+  Variable = c(
+    "Insurance Premium (KES)",
+    "Inflation Rate (%)",
+    "GDP Growth Rate (%)",
+    "Interest Rate (%)"
+  ),
+  Role = c(
+    "Dependent variable",
+    "Independent variable",
+    "Independent variable",
+    "Independent variable"
+  ),
+  Definition = c(
+    "Annual comprehensive car insurance premium for a vehicle valued at KES 2,000,000",
+    "Annual consumer price inflation rate as published by KNBS",
+    "Annual real GDP growth rate as published by the World Bank and KNBS",
+    "CBK benchmark lending rate used as a proxy for the prevailing interest rate environment"
+  ),
+  Expected_Effect = c(
+    "—",
+    "Positive: higher inflation increases claim costs and premiums",
+    "Positive: economic growth increases vehicle ownership and insurance demand",
+    "Negative: lower rates reduce investment income, pressuring premiums upward"
+  )
+)
+
+kable(var_table,
+      col.names = c("Variable", "Role", "Definition", "Expected Effect"),
+      caption   = "Variable Definitions, Roles and Expected Effects",
+      booktabs  = TRUE) %>%
+  kable_styling(
+    latex_options = c("striped", "hold_position", "scale_down"),
+    font_size     = 9
+  ) %>%
+  column_spec(3, width = "6cm") %>%
+  column_spec(4, width = "5cm")
+```
+
+---
+
+## 1.7 Chapter Summary
+```{r chapter-summary, echo=FALSE}
+cat("========================================================\n")
+cat("  CHAPTER 1 COMPLETE — DATA PREPARATION SUMMARY\n")
+cat("========================================================\n")
+cat("  Observations          :", nrow(df), "(2015-2024)\n")
+cat("  Variables             : 4 (1 dependent, 3 independent)\n")
+cat("  Missing values        : 0\n")
+cat("  Duplicate rows        : 0\n")
+cat("  COVID-19 flag (2020)  : GDP growth =",
+    df$GDP_Growth[df$Year == 2020], "%\n")
+cat("  Premium growth        :", round((max(df$Premium) -
+    min(df$Premium)) / min(df$Premium) * 100, 1), "% over study period\n")
+cat("  Interest rate decline :", max(df$Interest_Rate) -
+    min(df$Interest_Rate), "pp over study period\n")
+cat("========================================================\n")
+cat("  Proceed to Chapter 2 — Exploratory Data Analysis\n")
+cat("========================================================\n")
+```
