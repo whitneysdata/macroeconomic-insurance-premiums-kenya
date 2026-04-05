@@ -1,0 +1,478 @@
+---
+title: "Modelling the Impact of Macroeconomic Factors on Insurance Premiums in Kenya"
+subtitle: "Chapter 5 — Summary, Conclusions and Recommendations"
+author:
+ - "Whitney Kemuma"
+ - "Shebunah Nyairabu"
+date: |
+  2025
+  **Supervisor:** Dr Cynthia Mwende
+  Department of Mathematics and Actuarial Science, Kisii University
+output:
+  pdf_document:
+    latex_engine: xelatex
+    toc: true
+    toc_depth: 3
+    number_sections: true
+    fig_caption: true
+geometry: "left=2.5cm, right=2.5cm, top=2.5cm, bottom=2.5cm"
+header-includes:
+  - \usepackage{booktabs}
+  - \usepackage{float}
+  - \usepackage{amsmath}
+  - \usepackage{longtable}
+  - \usepackage{array}
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo      = TRUE,
+  message   = FALSE,
+  warning   = FALSE,
+  fig.pos   = "H",
+  fig.align = "center",
+  out.width = "90%",
+  fig.width = 8,
+  fig.height = 4.5
+)
+```
+
+\newpage
+
+# Chapter 5: Summary, Conclusions and Recommendations
+
+## 5.1 Introduction
+
+This chapter synthesises the findings from Chapters 1 through 4, answers
+the research questions and hypotheses posed in Chapter 0, and offers
+recommendations for actuarial practice, regulatory policy, and future
+research. The study modelled the impact of macroeconomic factors on
+comprehensive car insurance premiums in Kenya over the period 2015 to 2024,
+using ARIMAX time series modelling and Multiple Linear Regression.
+
+---
+
+## 5.2 Load Libraries and Refit Models
+```{r load-and-refit}
+library(ggplot2)
+library(dplyr)
+library(knitr)
+library(kableExtra)
+library(forecast)
+library(tseries)
+library(car)
+library(scales)
+
+# Load data
+df <- read.csv("../data/insurance_data.csv",
+               stringsAsFactors = FALSE)
+names(df) <- c("Year","Premium","Inflation",
+               "GDP_Growth","Interest_Rate")
+
+# Refit ARIMAX
+premium_ts  <- ts(df$Premium, start = 2015, frequency = 1)
+xreg_matrix <- cbind(
+  Inflation = df$Inflation,
+  GDP       = df$GDP_Growth,
+  Interest  = df$Interest_Rate
+)
+arimax_model <- auto.arima(premium_ts, xreg = xreg_matrix,
+                            stepwise = FALSE,
+                            approximation = FALSE)
+
+# Refit MLR
+mlr_model <- lm(Premium ~ Inflation + GDP_Growth + Interest_Rate,
+                data = df)
+mlr_sum   <- summary(mlr_model)
+
+cat("Models refitted.\n")
+```
+
+---
+
+## 5.3 Summary of Findings
+
+### 5.3.1 Research Question 1 — Trends and Patterns
+
+Insurance premiums in Kenya followed a U-shaped trajectory between 2015
+and 2024, declining from KES 32,000 in 2015 to KES 30,000 in 2018 before
+recovering to KES 37,500 by 2024 — a net increase of 17.2% over the study
+period. The initial decline coincided with falling interest rates and
+moderate inflation, while the post-2019 upward trend aligns with rising
+claim costs and inflationary pressure.
+
+Interest rates declined monotonically by 5 percentage points over the period,
+representing a structural shift in the investment environment for Kenyan
+insurers. Inflation fluctuated around a mean of
+`r round(mean(df$Inflation), 2)`%, with notable peaks in 2017 and 2022-2023.
+GDP growth was broadly positive except for the COVID-19 contraction of -0.27%
+in 2020.
+
+### 5.3.2 Research Question 2 — ARIMAX Model Performance
+```{r arimax-summary-table}
+acc  <- accuracy(arimax_model)
+lb   <- Box.test(residuals(arimax_model), lag = 3,
+                 type = "Ljung-Box")
+
+arimax_df <- data.frame(
+  Metric = c("ARIMA Order", "AIC", "BIC",
+             "MAPE (%)", "RMSE (KES)",
+             "Ljung-Box p-value",
+             "Residual white noise?"),
+  Value  = c(
+    paste0("ARIMA(", arimax_model$arma[1], ",",
+           arimax_model$arma[6], ",",
+           arimax_model$arma[2], ")"),
+    round(arimax_model$aic,  2),
+    round(arimax_model$bic,  2),
+    round(acc[1,"MAPE"],     2),
+    round(acc[1,"RMSE"],     2),
+    round(lb$p.value,        4),
+    ifelse(lb$p.value > 0.05, "Yes", "No")
+  )
+)
+
+kable(arimax_df,
+      caption  = "ARIMAX Model Performance Summary",
+      booktabs = TRUE,
+      align    = c("l","r")) %>%
+  kable_styling(
+    latex_options = c("striped", "hold_position"),
+    font_size     = 10,
+    full_width    = FALSE
+  )
+```
+
+The ARIMAX model provided a good fit to the historical data with a MAPE
+below 5%, and the Ljung-Box test confirmed that residuals behaved as
+white noise, indicating no systematic patterns were left unexplained.
+
+### 5.3.3 Research Question 3 — Hypothesis Test Outcomes
+```{r hyp-summary-table}
+coef_mat <- mlr_sum$coefficients
+p_inf    <- coef_mat["Inflation",     4]
+p_gdp    <- coef_mat["GDP_Growth",    4]
+p_int    <- coef_mat["Interest_Rate", 4]
+b_inf    <- coef_mat["Inflation",     1]
+b_gdp    <- coef_mat["GDP_Growth",    1]
+b_int    <- coef_mat["Interest_Rate", 1]
+
+f_stat   <- mlr_sum$fstatistic
+f_pval   <- pf(f_stat[1], f_stat[2], f_stat[3],
+               lower.tail = FALSE)
+
+hyp_df <- data.frame(
+  Hypothesis = c(
+    "H1: Inflation effect on premiums",
+    "H2: GDP growth effect on premiums",
+    "H3: Interest rate effect on premiums",
+    "H4: Overall model significance"
+  ),
+  Coefficient = c(
+    round(b_inf, 2),
+    round(b_gdp, 2),
+    round(b_int, 2),
+    NA
+  ),
+  P_Value = c(
+    round(p_inf,   4),
+    round(p_gdp,   4),
+    round(p_int,   4),
+    round(f_pval,  4)
+  ),
+  Decision = c(
+    ifelse(p_inf  < 0.05, "Reject H0", "Fail to Reject H0"),
+    ifelse(p_gdp  < 0.05, "Reject H0", "Fail to Reject H0"),
+    ifelse(p_int  < 0.05, "Reject H0", "Fail to Reject H0"),
+    ifelse(f_pval < 0.05, "Reject H0", "Fail to Reject H0")
+  ),
+  Direction = c(
+    ifelse(b_inf > 0, "Positive (expected)", "Negative"),
+    ifelse(b_gdp > 0, "Positive (expected)", "Negative"),
+    ifelse(b_int < 0, "Negative (expected)", "Positive"),
+    "—"
+  )
+)
+
+kable(hyp_df,
+      col.names = c("Hypothesis", "Coefficient",
+                    "p-value", "Decision", "Direction"),
+      caption   = "Hypothesis Test Results Summary (alpha = 0.05)",
+      booktabs  = TRUE,
+      align     = c("l","r","r","l","l")) %>%
+  kable_styling(
+    latex_options = c("striped", "hold_position", "scale_down"),
+    font_size     = 10,
+    full_width    = FALSE
+  ) %>%
+  footnote(
+    general = paste(
+      "All tests conducted at the 5% significance level.",
+      "Coefficient shown is the MLR estimate.",
+      "For H4, the test statistic is the F-statistic."
+    ),
+    footnote_as_chunk = TRUE,
+    threeparttable    = TRUE
+  )
+```
+
+### 5.3.4 Research Question 4 — Premium Forecasts 2025-2027
+```{r forecast-summary-table}
+xreg_base <- matrix(
+  c(3.50, 5.60, 9.00,
+    3.50, 5.60, 9.00,
+    3.50, 5.60, 9.00),
+  nrow = 3, ncol = 3, byrow = TRUE,
+  dimnames = list(NULL,
+                  c("Inflation","GDP","Interest"))
+)
+
+fc_base <- forecast(arimax_model,
+                    xreg = xreg_base, h = 3)
+
+fc_df <- data.frame(
+  Year     = 2025:2027,
+  Forecast = round(as.numeric(fc_base$mean), 0),
+  Lo_80    = round(as.numeric(fc_base$lower[,1]), 0),
+  Hi_80    = round(as.numeric(fc_base$upper[,1]), 0),
+  Lo_95    = round(as.numeric(fc_base$lower[,2]), 0),
+  Hi_95    = round(as.numeric(fc_base$upper[,2]), 0)
+)
+
+kable(fc_df,
+      col.names = c("Year", "Point Forecast (KES)",
+                    "80% CI Lower", "80% CI Upper",
+                    "95% CI Lower", "95% CI Upper"),
+      caption   = "Baseline Premium Forecasts 2025-2027 with Confidence Intervals",
+      booktabs  = TRUE,
+      align     = c("c","r","r","r","r","r"),
+      format.args = list(big.mark = ",")) %>%
+  kable_styling(
+    latex_options = c("striped", "hold_position", "scale_down"),
+    font_size     = 10,
+    full_width    = FALSE
+  ) %>%
+  footnote(
+    general = "Baseline assumes 2024 macroeconomic levels held constant.
+    CI = confidence interval.",
+    footnote_as_chunk = TRUE,
+    threeparttable    = TRUE
+  )
+```
+
+---
+
+## 5.4 Conclusions
+
+Based on the empirical analysis conducted in this study, the following
+conclusions are drawn:
+
+**Conclusion 1 — Interest rate is the dominant macroeconomic predictor.**
+The interest rate was the only variable achieving statistical significance
+at the 5% level in the MLR model
+(β = `r round(b_int, 2)`, p = `r round(p_int, 4)`).
+The strong negative correlation (r = `r round(cor(df$Premium, df$Interest_Rate), 3)`)
+and significant coefficient confirm that the decade long decline in the CBK
+benchmark rate has been a primary driver of upward premium pressure in Kenya.
+This is consistent with economic theory, as investment income from insurer
+asset portfolios falls with declining rates, premium income must compensate.
+
+**Conclusion 2 — Inflation and GDP are directionally consistent but statistically weak.**
+Both inflation and GDP growth showed the theoretically expected signs —
+positive effects on premiums, but neither achieved significance at the 5%
+level over this study period. The small sample size (n = 10) substantially
+limits statistical power, and these variables may become significant with
+a longer data series.
+
+**Conclusion 3 — The ARIMAX model provides an adequate fit.**
+The model achieved a MAPE of `r round(accuracy(arimax_model)[1,"MAPE"], 2)`%
+on training data, and residual diagnostics confirmed white noise behaviour
+(Ljung-Box p = `r round(Box.test(residuals(arimax_model), lag=3, type="Ljung-Box")$p.value, 4)`).
+The actual vs fitted plot showed close alignment from 2018 onward,
+with modest early-period deviation.
+
+**Conclusion 4 — Premiums are projected to continue rising.**
+Under baseline macroeconomic assumptions, the ARIMAX forecast projects
+premiums reaching KES `r fc_df$Forecast[1]` in 2025,
+KES `r fc_df$Forecast[2]` in 2026, and
+KES `r fc_df$Forecast[3]` in 2027. The widening confidence intervals
+reflect increasing forecast uncertainty over the horizon and underscore
+the importance of monitoring macroeconomic developments.
+
+---
+
+## 5.5 Recommendations
+
+### 5.5.1 For Insurance Companies
+
+**Embed interest rate monitoring into pricing cycles.** Given the dominant
+role of interest rates, insurers should integrate CBK rate decisions and
+interest rate forecasts directly into actuarial pricing reviews. A 1
+percentage point change in the benchmark rate is associated with a
+KES `r round(abs(b_int), 0)` change in annual premiums according to the
+MLR model.
+
+**Develop inflation-indexed pricing reserves.** Although inflation did not
+achieve statistical significance in this study, its directional positive
+effect is consistent with theory. Insurers should maintain inflation
+sensitivity buffers, particularly for long tail lines where claims are
+settled years after premium collection.
+
+**Use scenario forecasting for strategic planning.** The three scenario
+forecast framework developed in Chapter 3 provides a practical tool for
+stress testing pricing assumptions against optimistic and pessimistic
+macroeconomic outcomes.
+
+### 5.5.2 For Policymakers and Regulators
+
+**Macroeconomic stability directly supports insurance market stability.**
+The significant link between interest rates and premiums means that CBK
+monetary policy has direct implications for insurance affordability.
+Regulators should account for interest rate environments when assessing
+whether premium adjustments are economically justified.
+
+**Promote transparency in premium adjustment reporting.** Regulatory
+frameworks should require insurers to document the macroeconomic
+assumptions underpinning premium changes, enabling regulators to
+verify that adjustments reflect genuine economic drivers rather than
+opportunistic pricing.
+
+### 5.5.3 For Future Researchers
+
+**Extend the dataset.** The most significant limitation of this study is
+the small sample size (n = 10). Extending the analysis to quarterly data
+or a longer annual series would substantially improve statistical power
+and enable more robust inference.
+
+**Include additional macroeconomic variables.** Unemployment, exchange
+rates, and consumer confidence indices were not included due to data
+availability constraints. Their inclusion may strengthen the predictive
+power of the model.
+
+**Disaggregate by insurance product line.** This study used a single
+insurance product (comprehensive motor). Different lines — life, health,
+property - may respond differently to macroeconomic conditions,
+offering richer insights for insurers operating across multiple segments.
+
+**Apply machine learning approaches.** For longer datasets, gradient
+boosting and neural network time series models (LSTM) could be compared
+against the ARIMAX and MLR baselines to assess whether non-linear methods
+offer predictive improvements in the Kenyan insurance context.
+
+---
+
+## 5.6 Limitations
+```{r limitations-table, echo=FALSE}
+lim_df <- data.frame(
+  Limitation = c(
+    "Small sample size (n = 10)",
+    "Annual data frequency",
+    "Single insurance product",
+    "Three predictors only",
+    "Interest rate assumed from trend",
+    "No structural break modelling"
+  ),
+  Impact = c(
+    "Low statistical power — limits significance testing",
+    "Cannot capture intra-year seasonality",
+    "Findings may not generalise to life or health insurance",
+    "Omitted variables may bias coefficient estimates",
+    "Assumed values introduce measurement uncertainty",
+    "COVID-19 shock treated as a data point, not a structural break"
+  ),
+  Mitigation = c(
+    "LOO cross-validation used; results interpreted with appropriate caution",
+    "Annual data is appropriate given annual premium setting cycles",
+    "Explicitly acknowledged in scope (Chapter 0, Section 1.4)",
+    "Correlation matrix and VIF confirm no multicollinearity among included variables",
+    "Sensitivity analysis across scenarios conducted in Chapter 3",
+    "2020 flagged throughout; residual plots checked for outlier influence"
+  )
+)
+
+kable(lim_df,
+      col.names = c("Limitation", "Impact", "Mitigation"),
+      caption   = "Study Limitations, Impacts and Mitigations",
+      booktabs  = TRUE) %>%
+  kable_styling(
+    latex_options = c("striped", "hold_position", "scale_down"),
+    font_size     = 9,
+    full_width    = FALSE
+  ) %>%
+  column_spec(1, width = "3.5cm") %>%
+  column_spec(2, width = "4.5cm") %>%
+  column_spec(3, width = "5cm")
+```
+
+---
+
+## 5.7 Final Project Summary
+```{r final-summary, echo=FALSE}
+cat("=======================================================\n")
+cat("  PROJECT COMPLETE — FULL STUDY SUMMARY\n")
+cat("=======================================================\n\n")
+cat("Title   : Modelling the Impact of Macroeconomic Factors\n")
+cat("          on Insurance Premiums Using Time Series\n")
+cat("          Analysis and Multiple Linear Regression\n")
+cat("Author  : Whitney Kemuma\n")
+cat("Period  : 2015-2024 (Kenya)\n\n")
+cat("Models  :\n")
+cat("  ARIMAX : ARIMA(",
+    arimax_model$arma[1], ",",
+    arimax_model$arma[6], ",",
+    arimax_model$arma[2], ") with 3 exogenous regressors\n")
+cat("  MLR    : Premium ~ Inflation + GDP + Interest Rate\n\n")
+cat("Key results:\n")
+cat("  R-squared (MLR)  :", round(mlr_sum$r.squared, 4), "\n")
+cat("  MAPE (ARIMAX)    :",
+    round(accuracy(arimax_model)[1,"MAPE"], 2), "%\n")
+cat("  Significant pred : Interest Rate (p =",
+    round(p_int, 4), ")\n\n")
+cat("Forecasts (baseline, 2024 macro levels):\n")
+cat("  2025 :", fc_df$Forecast[1], "KES\n")
+cat("  2026 :", fc_df$Forecast[2], "KES\n")
+cat("  2027 :", fc_df$Forecast[3], "KES\n\n")
+cat("Chapters: 0 (Foundation) | 1 (Data) | 2 (EDA)\n")
+cat("          3 (ARIMAX) | 4 (MLR) | 5 (Conclusions)\n\n")
+cat("  Project submission ready.\n")
+cat("=======================================================\n")
+```
+
+---
+
+# References
+
+- Aziz, A.M.A.K., & Aziz, M.A.H.M.A.K. (2020). Macroeconomic variables
+  and insurance premiums in Malaysia. *Google Scholar.*
+
+- Box, G.E.P., & Jenkins, G.M. (1976). *Time Series Analysis: Forecasting
+  and Control.* Holden-Day.
+
+- Central Bank of Kenya (2023). *Monetary Policy Statement — June 2023.*
+  Retrieved from https://www.centralbank.go.ke
+
+- EIOPA (2022). *Insurance and Inflation.*
+  Retrieved from https://www.eiopa.europa.eu
+
+- Frees, E.W., Derrig, R.A., & Meyers, G. (2014). *Predictive Modeling
+  Applications in Actuarial Science.* Cambridge University Press.
+
+- Insurance Regulatory Authority (IRA) (2023). *Annual Insurance Industry
+  Report.* Retrieved from https://www.ira.go.ke
+
+- Kenya National Bureau of Statistics (KNBS) (2023). *Economic Survey 2023.*
+  Retrieved from https://www.knbs.or.ke
+
+- Kimani, J. (2021). Inflation and financial performance of Kenyan insurance
+  companies. *eRepository.*
+
+- Mwangi, M. (2017). Effect of macroeconomic variables on financial
+  performance of insurance firms in Kenya. *eRepository.*
+
+- Njeri, W. (2016). Interest rates and financial performance of insurance
+  firms in Kenya. *eRepository.*
+
+- Nyambura, L. (2022). Time series analysis of insurance claims in Kenya.
+  *Kenyatta University.*
+
+- Outreville, J.F. (2020). The relationship between insurance and economic
+  development. *SpringerLink.*
