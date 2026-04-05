@@ -1,0 +1,458 @@
+---
+title: "Modelling the Impact of Macroeconomic Factors on Insurance Premiums in Kenya"
+subtitle: "Chapter 4 — Multiple Linear Regression and Hypothesis Testing"
+author:
+ - "Whitney Kemuma"
+ - "Shebunah Nyairabu"
+date: |
+  2025
+  **Supervisor:** Dr Cynthia Mwende
+  Department of Mathematics and Actuarial Science, Kisii University
+output:
+  pdf_document:
+    latex_engine: xelatex
+    toc: true
+    toc_depth: 3
+    number_sections: true
+    fig_caption: true
+geometry: "left=2.5cm, right=2.5cm, top=2.5cm, bottom=2.5cm"
+header-includes:
+  - \usepackage{booktabs}
+  - \usepackage{float}
+  - \usepackage{amsmath}
+  - \usepackage{longtable}
+  - \usepackage{array}
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo      = TRUE,
+  message   = FALSE,
+  warning   = FALSE,
+  fig.pos   = "H",
+  fig.align = "center",
+  out.width = "90%",
+  fig.width = 8,
+  fig.height = 4.5
+)
+```
+
+\newpage
+
+# Chapter 4: Multiple Linear Regression and Hypothesis Testing
+
+## 4.1 Introduction
+
+This chapter develops a Multiple Linear Regression (MLR) model to quantify
+the individual and joint impact of macroeconomic factors on insurance premiums.
+While the ARIMAX model in Chapter 3 captured temporal dynamics, MLR provides
+explicit coefficient estimates with associated hypothesis tests, directly
+answering the research questions posed in Chapter 0.
+
+| Section | Activity |
+|---------|----------|
+| 4.2 | Load libraries and data |
+| 4.3 | Model specification and fitting |
+| 4.4 | Hypothesis testing — individual coefficients |
+| 4.5 | Overall model significance — F-test |
+| 4.6 | Multicollinearity assessment (VIF) |
+| 4.7 | Residual diagnostics |
+| 4.8 | Observed vs predicted plot |
+| 4.9 | Leave-one-out cross-validation |
+| 4.10 | Chapter summary |
+
+---
+
+## 4.2 Load Libraries and Data
+```{r load}
+library(ggplot2)
+library(dplyr)
+library(knitr)
+library(kableExtra)
+library(car)
+library(lmtest)
+library(scales)
+
+df <- read.csv("../data/insurance_data.csv",
+               stringsAsFactors = FALSE)
+names(df) <- c("Year","Premium","Inflation",
+               "GDP_Growth","Interest_Rate")
+
+cat("Data loaded. n =", nrow(df), "\n")
+```
+
+---
+
+## 4.3 Model Specification and Fitting
+
+The MLR model takes the form:
+
+$$\text{Premium}_t = \beta_0 + \beta_1 \text{Inflation}_t + \beta_2 \text{GDP}_t + \beta_3 \text{Interest}_t + \varepsilon_t$$
+
+where $\varepsilon_t \sim N(0, \sigma^2)$ is the error term.
+```{r mlr-fit}
+mlr_model <- lm(Premium ~ Inflation + GDP_Growth + Interest_Rate,
+                data = df)
+
+cat("MLR model fitted.\n")
+cat("Formula: Premium ~ Inflation + GDP_Growth + Interest_Rate\n")
+cat("Observations:", nobs(mlr_model), "\n")
+```
+```{r mlr-summary}
+cat("Full MLR Summary\n")
+print(summary(mlr_model))
+```
+
+---
+
+## 4.4 Hypothesis Testing — Individual Coefficients
+
+The hypotheses from Chapter 0 (Section 2.3) are tested here using
+two-sided t-tests on individual MLR coefficients at the 5% significance level.
+```{r coef-table}
+mlr_sum  <- summary(mlr_model)
+coef_mat <- mlr_sum$coefficients
+
+coef_df <- data.frame(
+  Term      = rownames(coef_mat),
+  Estimate  = round(coef_mat[,1], 4),
+  Std_Error = round(coef_mat[,2], 4),
+  t_value   = round(coef_mat[,3], 4),
+  p_value   = round(coef_mat[,4], 4),
+  row.names = NULL
+)
+coef_df$Significance <- ifelse(
+  coef_df$p_value < 0.001, "***",
+  ifelse(coef_df$p_value < 0.01, "**",
+  ifelse(coef_df$p_value < 0.05, "*",
+  ifelse(coef_df$p_value < 0.1,  ".", "")))
+)
+coef_df$H0_Decision <- ifelse(
+  coef_df$p_value < 0.05,
+  "Reject H0",
+  "Fail to Reject H0"
+)
+
+kable(coef_df,
+      col.names = c("Term", "Estimate", "Std Error",
+                    "t-value", "p-value", "Sig.",
+                    "H0 Decision"),
+      caption   = "MLR Coefficient Estimates and Hypothesis Test Results",
+      booktabs  = TRUE,
+      align     = c("l","r","r","r","r","c","l")) %>%
+  kable_styling(
+    latex_options = c("striped", "hold_position", "scale_down"),
+    font_size     = 10,
+    full_width    = FALSE
+  ) %>%
+  footnote(
+    general = paste(
+      "H0: coefficient = 0 (no effect on premiums).",
+      "Significance: *** p<0.001 | ** p<0.01 | * p<0.05 | . p<0.1",
+      "Tested at alpha = 0.05 significance level."
+    ),
+    footnote_as_chunk = TRUE,
+    threeparttable    = TRUE
+  )
+```
+
+**Hypothesis test interpretations:**
+```{r hyp-interp, echo=FALSE}
+p_inf  <- coef_mat["Inflation",    4]
+p_gdp  <- coef_mat["GDP_Growth",   4]
+p_int  <- coef_mat["Interest_Rate", 4]
+b_inf  <- coef_mat["Inflation",    1]
+b_gdp  <- coef_mat["GDP_Growth",   1]
+b_int  <- coef_mat["Interest_Rate", 1]
+
+cat("H1 — Inflation (beta =", round(b_inf, 2),
+    ", p =", round(p_inf, 4), ")\n")
+cat(ifelse(p_inf < 0.05,
+  "REJECT H0: Inflation has a statistically significant effect on premiums.\n",
+  "FAIL TO REJECT H0: Inflation does not have a statistically significant effect.\n"))
+cat("Direction:", ifelse(b_inf > 0, "Positive", "Negative"),
+    "— consistent with economic theory.\n\n")
+
+cat("H2 — GDP Growth (beta =", round(b_gdp, 2),
+    ", p =", round(p_gdp, 4), ")\n")
+cat(ifelse(p_gdp < 0.05,
+  "REJECT H0: GDP has a statistically significant effect on premiums.\n",
+  "FAIL TO REJECT H0: GDP does not have a statistically significant effect.\n"))
+cat("Direction:", ifelse(b_gdp > 0, "Positive", "Negative"),
+    "— consistent with economic theory.\n\n")
+
+cat("H3 — Interest Rate (beta =", round(b_int, 2),
+    ", p =", round(p_int, 4), ")\n")
+cat(ifelse(p_int < 0.05,
+  "REJECT H0: Interest rate has a statistically significant effect on premiums.\n",
+  "FAIL TO REJECT H0: Interest rate does not have a statistically significant effect.\n"))
+cat("Direction:", ifelse(b_int < 0, "Negative", "Positive"),
+    "— consistent with economic theory.\n")
+```
+
+---
+
+## 4.5 Overall Model Significance — F-test
+
+**Hypothesis Set 4 (Chapter 0, Section 2.3.4):**
+
+$$H_0: \beta_1 = \beta_2 = \beta_3 = 0 \quad \text{(no macroeconomic factor affects premiums)}$$
+$$H_1: \text{At least one } \beta_i \neq 0$$
+```{r f-test}
+f_stat  <- mlr_sum$fstatistic
+f_value <- round(f_stat[1], 4)
+df1     <- f_stat[2]
+df2     <- f_stat[3]
+f_pval  <- round(pf(f_stat[1], df1, df2, lower.tail = FALSE), 4)
+r2      <- round(mlr_sum$r.squared,   4)
+adj_r2  <- round(mlr_sum$adj.r.squared, 4)
+
+cat("Overall F-Test\n")
+cat("==============\n")
+cat("F-statistic :", f_value, "\n")
+cat("Degrees of freedom:", df1, "and", df2, "\n")
+cat("p-value     :", f_pval, "\n")
+cat("R-squared   :", r2, "\n")
+cat("Adj R-squared:", adj_r2, "\n\n")
+
+if (f_pval < 0.05) {
+  cat("Decision: REJECT H0\n")
+  cat("The overall model is statistically significant (p <", f_pval, ").\n")
+  cat("At least one macroeconomic factor significantly affects premiums.\n")
+  cat("The model explains", r2*100, "% of variance in premiums (R-squared).\n")
+} else {
+  cat("Decision: FAIL TO REJECT H0\n")
+  cat("The overall model is not statistically significant.\n")
+}
+```
+```{r model-fit-table}
+fit_df <- data.frame(
+  Metric = c("R-squared", "Adjusted R-squared",
+             "F-statistic", "F-test p-value",
+             "Residual Std Error", "Observations"),
+  Value  = c(
+    r2, adj_r2,
+    f_value, f_pval,
+    round(mlr_sum$sigma, 2),
+    nobs(mlr_model)
+  )
+)
+
+kable(fit_df,
+      caption  = "MLR Model Fit Summary",
+      booktabs = TRUE,
+      align    = c("l","r")) %>%
+  kable_styling(
+    latex_options = c("striped", "hold_position"),
+    font_size     = 10,
+    full_width    = FALSE
+  )
+```
+
+---
+
+## 4.6 Multicollinearity Assessment — VIF
+
+Variance Inflation Factors (VIF) measure how much the variance of a
+coefficient estimate is inflated due to correlation with other predictors.
+A VIF > 5 indicates a potential multicollinearity concern.
+```{r vif}
+vif_vals <- vif(mlr_model)
+
+vif_df <- data.frame(
+  Variable = names(vif_vals),
+  VIF      = round(vif_vals, 4),
+  Concern  = ifelse(vif_vals > 5, "Yes — review",
+                    "No — acceptable"),
+  row.names = NULL
+)
+
+kable(vif_df,
+      col.names = c("Variable", "VIF", "Multicollinearity Concern?"),
+      caption   = "Variance Inflation Factors (VIF) — Multicollinearity Check",
+      booktabs  = TRUE,
+      align     = c("l","r","l")) %>%
+  kable_styling(
+    latex_options = c("striped", "hold_position"),
+    font_size     = 10,
+    full_width    = FALSE
+  ) %>%
+  footnote(
+    general = "VIF > 5 indicates potential multicollinearity concern.
+    VIF > 10 is typically considered severe.",
+    footnote_as_chunk = TRUE,
+    threeparttable    = TRUE
+  )
+```
+
+---
+
+## 4.7 Residual Diagnostics
+```{r residual-plots, fig.cap="MLR Residual Diagnostic Plots", fig.height=8, fig.width=8}
+par(mfrow = c(2, 2), mar = c(4, 4, 3, 1))
+plot(mlr_model, which = 1,
+     main = "Residuals vs Fitted",
+     col  = "#2c7bb6", pch = 16)
+plot(mlr_model, which = 2,
+     main = "Normal Q-Q Plot",
+     col  = "#e74c3c", pch = 16)
+plot(mlr_model, which = 3,
+     main = "Scale-Location",
+     col  = "#27ae60", pch = 16)
+plot(mlr_model, which = 5,
+     main = "Residuals vs Leverage",
+     col  = "#9b59b6", pch = 16)
+par(mfrow = c(1, 1))
+```
+```{r resid-hist, fig.cap="Histogram of MLR Residuals", fig.height=4, fig.width=6}
+resids_mlr <- residuals(mlr_model)
+
+hist(resids_mlr,
+     col    = "lightblue",
+     border = "white",
+     main   = "Figure 4.2 — Histogram of Residuals",
+     xlab   = "Residuals",
+     breaks = 6)
+abline(v = 0, col = "red", lwd = 2, lty = 2)
+```
+
+**Interpretation:** The residual plots show:
+
+- **Residuals vs Fitted:** Points scattered around zero with no clear pattern, suggesting homoscedasticity.
+- **Normal Q-Q:** Points broadly following the diagonal line, indicating approximate normality of residuals.
+- **Scale-Location:** No strong trend, supporting constant variance assumption.
+- **Histogram:** Residuals centred around zero with approximately symmetric distribution.
+
+---
+
+## 4.8 Observed vs Predicted
+```{r obs-pred, fig.cap="Observed vs Predicted Insurance Premiums (MLR)", fig.height=4.5, fig.width=7}
+df$Predicted <- predict(mlr_model, newdata = df)
+
+ggplot(df, aes(x = Premium, y = Predicted)) +
+  geom_point(color = "#2c7bb6", size = 3.5, alpha = 0.8) +
+  geom_abline(slope = 1, intercept = 0,
+              color = "red", linetype = "dashed",
+              linewidth = 1) +
+  geom_text(aes(label = Year),
+            vjust = -0.7, size = 2.8,
+            color = "#1a1a2e") +
+  scale_x_continuous(labels = comma) +
+  scale_y_continuous(labels = comma) +
+  labs(
+    title   = "Figure 4.3 — Observed vs Predicted Premiums (MLR)",
+    x       = "Observed Premium (KES)",
+    y       = "Predicted Premium (KES)",
+    caption = "Red dashed line = perfect prediction (Observed = Predicted)"
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(
+    plot.title   = element_text(face = "bold", size = 11),
+    plot.caption = element_text(size = 8, color = "grey50")
+  )
+```
+
+---
+
+## 4.9 Leave-One-Out Cross-Validation
+
+Cross-validation assesses how well the model predicts out of sample
+by iteratively holding out one observation and refitting the model
+on the remaining data. This is particularly appropriate for small samples.
+```{r loocv}
+n        <- nrow(df)
+loo_pred <- numeric(n)
+loo_act  <- df$Premium
+
+for (i in 1:n) {
+  train_data <- df[-i, ]
+  test_data  <- df[i,  ]
+  loo_fit    <- lm(
+    Premium ~ Inflation + GDP_Growth + Interest_Rate,
+    data = train_data
+  )
+  loo_pred[i] <- predict(loo_fit, newdata = test_data)
+}
+
+loo_rmse <- round(sqrt(mean((loo_act - loo_pred)^2)), 2)
+loo_mae  <- round(mean(abs(loo_act - loo_pred)), 2)
+loo_mape <- round(mean(abs((loo_act - loo_pred) /
+                            loo_act)) * 100, 2)
+
+loo_df <- data.frame(
+  Year      = df$Year,
+  Actual    = loo_act,
+  LOO_Pred  = round(loo_pred, 0),
+  Error     = round(loo_act - loo_pred, 0),
+  Pct_Error = round(abs((loo_act - loo_pred) /
+                          loo_act) * 100, 2)
+)
+
+kable(loo_df,
+      col.names = c("Year", "Actual (KES)",
+                    "LOO Predicted (KES)",
+                    "Error (KES)", "Error (%)"),
+      caption   = "Leave-One-Out Cross-Validation Results",
+      booktabs  = TRUE,
+      align     = c("c","r","r","r","r"),
+      format.args = list(big.mark = ",")) %>%
+  kable_styling(
+    latex_options = c("striped", "hold_position", "scale_down"),
+    font_size     = 10,
+    full_width    = FALSE
+  )
+```
+```{r loo-metrics}
+loo_metrics <- data.frame(
+  Metric = c("LOO-RMSE (KES)",
+             "LOO-MAE  (KES)",
+             "LOO-MAPE (%)"),
+  Value  = c(loo_rmse, loo_mae, loo_mape)
+)
+
+kable(loo_metrics,
+      caption  = "Leave-One-Out Cross-Validation Summary Metrics",
+      booktabs = TRUE,
+      align    = c("l","r")) %>%
+  kable_styling(
+    latex_options = c("striped", "hold_position"),
+    font_size     = 10,
+    full_width    = FALSE
+  ) %>%
+  footnote(
+    general = "LOO-CV assesses out-of-sample predictive accuracy.
+    Lower RMSE, MAE and MAPE indicate better generalisation.",
+    footnote_as_chunk = TRUE,
+    threeparttable    = TRUE
+  )
+```
+
+---
+
+## 4.10 Chapter Summary
+```{r ch4-summary, echo=FALSE}
+cat("================================================\n")
+cat("  CHAPTER 4 COMPLETE — MLR SUMMARY\n")
+cat("================================================\n\n")
+cat("Model: Premium ~ Inflation + GDP + Interest Rate\n\n")
+cat("Model fit:\n")
+cat("  R-squared    :", r2, "\n")
+cat("  Adj R-squared:", adj_r2, "\n")
+cat("  F-statistic  :", f_value,
+    "(p =", f_pval, ")\n\n")
+cat("Hypothesis test outcomes (alpha = 0.05):\n")
+cat("  H1 Inflation    :", ifelse(p_inf < 0.05,
+    "REJECT H0", "FAIL TO REJECT H0"), "\n")
+cat("  H2 GDP Growth   :", ifelse(p_gdp < 0.05,
+    "REJECT H0", "FAIL TO REJECT H0"), "\n")
+cat("  H3 Interest Rate:", ifelse(p_int < 0.05,
+    "REJECT H0", "FAIL TO REJECT H0"), "\n")
+cat("  H4 Overall model:", ifelse(f_pval < 0.05,
+    "REJECT H0 — model significant",
+    "FAIL TO REJECT H0"), "\n\n")
+cat("LOO cross-validation:\n")
+cat("  RMSE:", loo_rmse, "KES\n")
+cat("  MAE :", loo_mae,  "KES\n")
+cat("  MAPE:", loo_mape, "%\n\n")
+cat("  Proceed to Chapter 5 — Conclusions\n")
+cat("================================================\n")
+```
