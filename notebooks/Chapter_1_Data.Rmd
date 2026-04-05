@@ -5,7 +5,10 @@ author:
  - "Whitney Kemuma"
  - "Shebunah Nyairabu"
 supervisor: "Dr Cynthia Mwende"
-date: "2025"
+date: |
+  2025
+  **Supervisor:** Dr Cynthia Mwende
+  Department of Mathematics and Actuarial Science, Kisii University
 output:
   pdf_document:
     latex_engine: xelatex

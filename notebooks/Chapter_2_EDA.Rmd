@@ -1,30 +1,454 @@
 ---
-title: "Chapter 2 EDA"
-author: "Whitney Kemuma"
-date: '2025'
-output: pdf_document
+title: "Modelling the Impact of Macroeconomic Factors on Insurance Premiums in Kenya"
+subtitle: "Chapter 2 — Exploratory Data Analysis"
+author:
+ - "Whitney Kemuma"
+ - "Shebunah Nyairabu"
+date: |
+  2025
+  **Supervisor:** Dr Cynthia Mwende
+  Department of Mathematics and Actuarial Science, Kisii University
+output:
+  pdf_document:
+    latex_engine: xelatex
+    toc: true
+    toc_depth: 3
+    number_sections: true
+    fig_caption: true
+    keep_tex: false
+geometry: "left=2.5cm, right=2.5cm, top=2.5cm, bottom=2.5cm"
+header-includes:
+  - \usepackage{booktabs}
+  - \usepackage{float}
+  - \usepackage{amsmath}
+  - \usepackage{graphicx}
+  - \usepackage{longtable}
+  - \usepackage{array}
+  - \usepackage{pdflscape}
+  - \setlength{\LTcapwidth}{\textwidth}
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo      = TRUE,
+  message   = FALSE,
+  warning   = FALSE,
+  fig.pos   = "H",
+  fig.align = "center",
+  out.width = "90%",
+  fig.width = 8,
+  fig.height = 4.5
+)
+```
+
+\newpage
+
+# Chapter 2: Exploratory Data Analysis
+
+## 2.1 Introduction
+
+Exploratory Data Analysis (EDA) is conducted before modelling to understand
+the structure, trends, and relationships in the data. The findings in this
+chapter directly motivate the modelling choices in Chapters 3 and 4,
+particularly the selection of ARIMAX for time series modelling and the
+assessment of which macroeconomic variables carry the most predictive signal.
+
+This chapter covers:
+
+| Section | Activity |
+|---------|----------|
+| 2.2 | Reload data and libraries |
+| 2.3 | Individual trend plots for all four variables |
+| 2.4 | Combined multi-panel trend overview |
+| 2.5 | Correlation analysis |
+| 2.6 | Stationarity testing (ADF test) |
+| 2.7 | Granger causality tests |
+| 2.8 | EDA summary and modelling implications |
+
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+## 2.2 Reload Data and Libraries
+```{r libraries-data}
+library(ggplot2)
+library(dplyr)
+library(knitr)
+library(kableExtra)
+library(forecast)
+library(tseries)
+library(lmtest)
+library(corrplot)
+library(gridExtra)
+library(scales)
+
+df <- read.csv("../data/insurance_data.csv",
+               stringsAsFactors = FALSE)
+names(df) <- c("Year", "Premium", "Inflation",
+               "GDP_Growth", "Interest_Rate")
+
+premium_ts <- ts(df$Premium, start = 2015, frequency = 1)
+
+cat("Data loaded. Observations:", nrow(df), "\n")
 ```
 
-## R Markdown
+---
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+## 2.3 Individual Variable Trend Plots
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
+### 2.3.1 Insurance Premium Trend
+```{r plot-premium, fig.cap="Insurance Premium Trend (2015-2024)"}
+ggplot(df, aes(x = Year, y = Premium)) +
+  geom_line(color = "#2c7bb6", linewidth = 1.2) +
+  geom_point(color = "#2c7bb6", size = 3) +
+  geom_text(aes(label = paste0("KES\n",
+            format(Premium, big.mark = ","))),
+            vjust = -0.6, size = 2.8, color = "#1a1a2e") +
+  labs(
+    title   = "Figure 2.1 — Insurance Premium Over Time",
+    x       = "Year",
+    y       = "Annual Premium (KES)",
+    caption = "Source: Insurance Regulatory Authority (IRA), 2015-2024"
+  ) +
+  scale_x_continuous(breaks = 2015:2024) +
+  scale_y_continuous(labels = comma,
+                     limits = c(27000, 41000)) +
+  theme_minimal(base_size = 11) +
+  theme(
+    plot.title   = element_text(face = "bold", size = 11),
+    axis.text.x  = element_text(angle = 45, hjust = 1),
+    plot.caption = element_text(size = 8, color = "grey50")
+  )
 ```
 
-## Including Plots
+**Interpretation:** Insurance premiums declined from KES 32,000 in 2015
+to a minimum of KES 30,000 in 2018, before recovering and rising steadily
+to KES 37,500 by 2024. The initial decline coincides with falling interest
+rates and contained inflation, while the post 2019 increase aligns with
+rising claim costs and inflationary pressures.
 
-You can also embed plots, for example:
+---
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+### 2.3.2 Inflation Rate Trend
+```{r plot-inflation, fig.cap="Inflation Rate Trend (2015-2024)"}
+ggplot(df, aes(x = Year, y = Inflation)) +
+  geom_line(color = "#f4a261", linewidth = 1.2) +
+  geom_point(color = "#f4a261", size = 3) +
+  geom_text(aes(label = paste0(Inflation, "%")),
+            vjust = -0.9, size = 3, color = "#1a1a2e") +
+  geom_hline(yintercept = mean(df$Inflation),
+             linetype = "dashed", color = "grey50",
+             linewidth = 0.8) +
+  annotate("text", x = 2015.3,
+           y = mean(df$Inflation) + 0.25,
+           label = paste0("Mean: ",
+                          round(mean(df$Inflation), 2), "%"),
+           size = 3, color = "grey40") +
+  labs(
+    title   = "Figure 2.2 — Inflation Rate Over Time",
+    x       = "Year",
+    y       = "Inflation Rate (%)",
+    caption = "Source: Kenya National Bureau of Statistics, 2015-2024"
+  ) +
+  scale_x_continuous(breaks = 2015:2024) +
+  scale_y_continuous(limits = c(2, 10)) +
+  theme_minimal(base_size = 11) +
+  theme(
+    plot.title   = element_text(face = "bold", size = 11),
+    axis.text.x  = element_text(angle = 45, hjust = 1),
+    plot.caption = element_text(size = 8, color = "grey50")
+  )
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+**Interpretation:** Inflation fluctuated across the study period, peaking
+at 8.01% in 2017 and reaching a decade low of 3.50% in 2024. The double
+peak around 2017 and 2022-2023 reflects global commodity price shocks and
+post COVID supply chain pressures respectively.
+
+---
+
+### 2.3.3 GDP Growth Rate Trend
+```{r plot-gdp, fig.cap="GDP Growth Rate Trend (2015-2024)"}
+ggplot(df, aes(x = Year, y = GDP_Growth)) +
+  geom_col(aes(fill = GDP_Growth < 0),
+           width = 0.6, alpha = 0.85) +
+  scale_fill_manual(values = c("#2ecc71", "#e74c3c"),
+                    guide  = "none") +
+  geom_line(color = "#27ae60", linewidth = 1) +
+  geom_point(color = "#27ae60", size = 3) +
+  geom_text(aes(label = paste0(GDP_Growth, "%")),
+            vjust = ifelse(df$GDP_Growth < 0, 1.8, -0.8),
+            size  = 3, color = "#1a1a2e") +
+  geom_hline(yintercept = 0, color = "black",
+             linewidth = 0.8) +
+  annotate("text", x = 2020, y = -1.5,
+           label = "COVID-19", size = 3,
+           color = "#e74c3c", fontface = "bold") +
+  labs(
+    title   = "Figure 2.3 — GDP Growth Rate Over Time",
+    x       = "Year",
+    y       = "GDP Growth Rate (%)",
+    caption = "Source: World Bank / KNBS, 2015-2024. Red = negative growth."
+  ) +
+  scale_x_continuous(breaks = 2015:2024) +
+  scale_y_continuous(limits = c(-2.5, 10)) +
+  theme_minimal(base_size = 11) +
+  theme(
+    plot.title   = element_text(face = "bold", size = 11),
+    axis.text.x  = element_text(angle = 45, hjust = 1),
+    plot.caption = element_text(size = 8, color = "grey50")
+  )
+```
+
+**Interpretation:** GDP growth was broadly positive across the study period,
+averaging `r round(mean(df$GDP_Growth), 2)`%. The 2020 contraction of
+-0.27% represents the COVID-19 shock. The strong rebound to 7.59% in 2021
+reflects post pandemic economic recovery.
+
+---
+
+### 2.3.4 Interest Rate Trend
+```{r plot-interest, fig.cap="Interest Rate Trend (2015-2024)"}
+ggplot(df, aes(x = Year, y = Interest_Rate)) +
+  geom_ribbon(aes(ymin = min(Interest_Rate),
+                  ymax = Interest_Rate),
+              fill = "#e74c3c", alpha = 0.12) +
+  geom_line(color = "#e74c3c", linewidth = 1.2) +
+  geom_point(color = "#e74c3c", size = 3) +
+  geom_text(aes(label = paste0(Interest_Rate, "%")),
+            vjust = -0.9, size = 3, color = "#1a1a2e") +
+  labs(
+    title   = "Figure 2.4 — Interest Rate Over Time",
+    x       = "Year",
+    y       = "Interest Rate (%)",
+    caption = "Source: Central Bank of Kenya (CBK), 2015-2024"
+  ) +
+  scale_x_continuous(breaks = 2015:2024) +
+  scale_y_continuous(limits = c(7, 16)) +
+  theme_minimal(base_size = 11) +
+  theme(
+    plot.title   = element_text(face = "bold", size = 11),
+    axis.text.x  = element_text(angle = 45, hjust = 1),
+    plot.caption = element_text(size = 8, color = "grey50")
+  )
+```
+
+**Interpretation:** The interest rate declined monotonically from 14%
+in 2015 to 9% in 2024, a 5 percentage point reduction. This sustained
+decline reflects the CBK's accommodative monetary policy and creates
+pressure on insurer investment income, making premium income more critical.
+
+---
+
+## 2.4 Combined Multi-Panel Overview
+```{r combined-plot, fig.cap="All Variables: Combined Trend Overview (2015-2024)", fig.height=8, fig.width=9}
+p1 <- ggplot(df, aes(x = Year, y = Premium)) +
+  geom_line(color = "#2c7bb6", linewidth = 1) +
+  geom_point(color = "#2c7bb6", size = 2) +
+  scale_y_continuous(labels = comma) +
+  scale_x_continuous(breaks = seq(2015, 2024, 2)) +
+  labs(title = "Insurance Premium (KES)", x = NULL, y = "KES") +
+  theme_minimal(base_size = 10) +
+  theme(plot.title = element_text(face = "bold", size = 10))
+
+p2 <- ggplot(df, aes(x = Year, y = Inflation)) +
+  geom_line(color = "#f4a261", linewidth = 1) +
+  geom_point(color = "#f4a261", size = 2) +
+  scale_x_continuous(breaks = seq(2015, 2024, 2)) +
+  labs(title = "Inflation Rate (%)", x = NULL, y = "%") +
+  theme_minimal(base_size = 10) +
+  theme(plot.title = element_text(face = "bold", size = 10))
+
+p3 <- ggplot(df, aes(x = Year, y = GDP_Growth)) +
+  geom_col(aes(fill = GDP_Growth < 0), width = 0.6,
+           alpha = 0.7) +
+  scale_fill_manual(values = c("#2ecc71","#e74c3c"),
+                    guide  = "none") +
+  geom_line(color = "#27ae60", linewidth = 1) +
+  scale_x_continuous(breaks = seq(2015, 2024, 2)) +
+  geom_hline(yintercept = 0, linewidth = 0.5) +
+  labs(title = "GDP Growth Rate (%)", x = NULL, y = "%") +
+  theme_minimal(base_size = 10) +
+  theme(plot.title = element_text(face = "bold", size = 10))
+
+p4 <- ggplot(df, aes(x = Year, y = Interest_Rate)) +
+  geom_line(color = "#e74c3c", linewidth = 1) +
+  geom_point(color = "#e74c3c", size = 2) +
+  scale_x_continuous(breaks = seq(2015, 2024, 2)) +
+  labs(title = "Interest Rate (%)", x = "Year", y = "%") +
+  theme_minimal(base_size = 10) +
+  theme(plot.title = element_text(face = "bold", size = 10))
+
+grid.arrange(p1, p2, p3, p4, ncol = 2,
+  top = "Figure 2.5 — All Variables: Trend Overview (2015-2024)")
+```
+
+---
+
+## 2.5 Correlation Analysis
+```{r correlation-table}
+cor_vars   <- df[, c("Premium", "Inflation",
+                     "GDP_Growth", "Interest_Rate")]
+cor_matrix <- cor(cor_vars, method = "pearson")
+
+kable(round(cor_matrix, 4),
+      caption  = "Pearson Correlation Matrix — All Variables",
+      booktabs = TRUE,
+      align    = "r") %>%
+  kable_styling(
+    latex_options = c("striped", "hold_position", "scale_down"),
+    font_size     = 10,
+    full_width    = FALSE
+  )
+```
+```{r correlation-plot, fig.cap="Pearson Correlation Heatmap", fig.height=5, fig.width=5.5}
+corrplot(cor_matrix,
+         method      = "color",
+         type        = "lower",
+         addCoef.col = "black",
+         tl.col      = "black",
+         tl.cex      = 0.9,
+         number.cex  = 0.9,
+         col = colorRampPalette(
+           c("#e74c3c", "white", "#2c7bb6"))(200),
+         title = "Figure 2.6 — Pearson Correlation Heatmap",
+         mar   = c(0, 0, 2, 0))
+```
+
+**Key observations:**
+
+- **Premium vs Interest Rate:** r = `r round(cor_matrix["Premium","Interest_Rate"], 3)` — strong negative relationship. As rates fall, premiums rise.
+- **Premium vs Inflation:** r = `r round(cor_matrix["Premium","Inflation"], 3)` — weak positive relationship.
+- **Premium vs GDP Growth:** r = `r round(cor_matrix["Premium","GDP_Growth"], 3)` — weak positive relationship.
+- No multicollinearity concerns between predictors.
+
+---
+
+## 2.6 Stationarity Testing — ADF Test
+
+**Hypotheses (Chapter 0, Section 2.3.5):**
+
+$$H_0: \text{Series has a unit root (non-stationary)}$$
+$$H_1: \text{Series is stationary}$$
+```{r adf-all}
+vars <- c("Premium","Inflation","GDP_Growth","Interest_Rate")
+
+adf_table <- data.frame(
+  Variable  = vars,
+  Statistic = NA_real_,
+  P_Value   = NA_real_,
+  Decision  = NA_character_,
+  stringsAsFactors = FALSE
+)
+
+for (i in seq_along(vars)) {
+  ts_var <- ts(df[[vars[i]]], start = 2015, frequency = 1)
+  adf_r  <- adf.test(ts_var, alternative = "stationary")
+  adf_table$Statistic[i] <- round(adf_r$statistic, 4)
+  adf_table$P_Value[i]   <- round(adf_r$p.value,   4)
+  adf_table$Decision[i]  <- ifelse(
+    adf_r$p.value < 0.05, "Stationary", "Non-stationary"
+  )
+}
+
+kable(adf_table,
+      col.names = c("Variable", "ADF Statistic",
+                    "p-value", "Decision (alpha=0.05)"),
+      caption   = "ADF Stationarity Test Results — All Variables",
+      booktabs  = TRUE,
+      align     = c("l","r","r","l")) %>%
+  kable_styling(
+    latex_options = c("striped", "hold_position", "scale_down"),
+    font_size     = 10,
+    full_width    = FALSE
+  ) %>%
+  footnote(
+    general = paste(
+      "H0: Unit root present (non-stationary).",
+      "Rejection at alpha = 0.05 indicates stationarity.",
+      "Note: ADF test has limited power with n = 10 observations.",
+      "auto.arima() in Chapter 3 handles differencing automatically."
+    ),
+    footnote_as_chunk = TRUE,
+    threeparttable    = TRUE
+  )
+```
+
+---
+
+## 2.7 Granger Causality Tests
+
+$$H_0: X \text{ does not Granger-cause Premium}$$
+$$H_1: X \text{ does Granger-cause Premium}$$
+```{r granger}
+granger_vars  <- c("Inflation", "GDP_Growth", "Interest_Rate")
+granger_table <- data.frame(
+  Variable = granger_vars,
+  F_Stat   = NA_real_,
+  P_Value  = NA_real_,
+  Decision = NA_character_,
+  stringsAsFactors = FALSE
+)
+
+for (i in seq_along(granger_vars)) {
+  pair <- cbind(df$Premium, df[[granger_vars[i]]])
+  tryCatch({
+    g <- grangertest(pair, order = 1)
+    granger_table$F_Stat[i]  <- round(g$F[2], 4)
+    granger_table$P_Value[i] <- round(g$`Pr(>F)`[2], 4)
+    granger_table$Decision[i] <- ifelse(
+      g$`Pr(>F)`[2] < 0.05,
+      "Granger-causes",
+      "Does not Granger-cause"
+    )
+  }, error = function(e) {
+    granger_table$Decision[i] <<- "Test failed"
+  })
+}
+
+kable(granger_table,
+      col.names = c("Predictor", "F-Statistic",
+                    "p-value", "Decision (alpha=0.05)"),
+      caption   = "Granger Causality Test Results (Predictor to Premium, lag=1)",
+      booktabs  = TRUE,
+      align     = c("l","r","r","l")) %>%
+  kable_styling(
+    latex_options = c("striped", "hold_position", "scale_down"),
+    font_size     = 10,
+    full_width    = FALSE
+  ) %>%
+  footnote(
+    general = paste(
+      "H0: Predictor does not Granger-cause Premium.",
+      "Lag = 1 due to small sample (n = 10).",
+      "Granger causality is predictive, not structural causal."
+    ),
+    footnote_as_chunk = TRUE,
+    threeparttable    = TRUE
+  )
+```
+
+---
+
+## 2.8 EDA Summary and Modelling Implications
+```{r eda-summary, echo=FALSE}
+cat("================================================\n")
+cat("  CHAPTER 2 COMPLETE — EDA SUMMARY\n")
+cat("================================================\n\n")
+cat("FINDING 1 — Premium Trend\n")
+cat("  Declined 2015-2018 then rose steadily to 2024.\n")
+cat("  Total rise over study period: KES",
+    max(df$Premium) - min(df$Premium), "\n\n")
+cat("FINDING 2 — Inflation\n")
+cat("  Fluctuating. Weak positive correlation with premiums.\n")
+cat("  r =", round(cor_matrix["Premium","Inflation"], 3), "\n\n")
+cat("FINDING 3 — GDP Growth\n")
+cat("  COVID-19 shock in 2020. Weak positive correlation.\n")
+cat("  r =", round(cor_matrix["Premium","GDP_Growth"], 3), "\n\n")
+cat("FINDING 4 — Interest Rate\n")
+cat("  Monotonic decline. Strong negative correlation.\n")
+cat("  r =", round(cor_matrix["Premium","Interest_Rate"], 3), "\n\n")
+cat("MODELLING IMPLICATIONS\n")
+cat("  Interest rate is likely the dominant predictor.\n")
+cat("  ADF results inform ARIMA order in Chapter 3.\n")
+cat("  COVID-19 is a structural break to monitor.\n\n")
+cat("  Proceed to Chapter 3 — ARIMAX Modelling\n")
+cat("================================================\n")
+```
