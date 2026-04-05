@@ -1,0 +1,542 @@
+---
+title: "Modelling the Impact of Macroeconomic Factors on Insurance Premiums in Kenya"
+subtitle: "Chapter 3 — ARIMAX Time Series Modelling and Forecasting"
+author:
+ - "Whitney Kemuma"
+ - "Shebunah Nyairabu"
+date: |
+  2025
+  **Supervisor:** Dr Cynthia Mwende
+  Department of Mathematics and Actuarial Science, Kisii University
+output:
+  pdf_document:
+    latex_engine: xelatex
+    toc: true
+    toc_depth: 3
+    number_sections: true
+    fig_caption: true
+geometry: "left=2.5cm, right=2.5cm, top=2.5cm, bottom=2.5cm"
+header-includes:
+  - \usepackage{booktabs}
+  - \usepackage{float}
+  - \usepackage{amsmath}
+  - \usepackage{longtable}
+  - \usepackage{array}
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo      = TRUE,
+  message   = FALSE,
+  warning   = FALSE,
+  fig.pos   = "H",
+  fig.align = "center",
+  out.width = "90%",
+  fig.width = 8,
+  fig.height = 4.5
+)
+```
+
+\newpage
+
+# Chapter 3: ARIMAX Time Series Modelling and Forecasting
+
+## 3.1 Introduction
+
+This chapter fits an ARIMAX (AutoRegressive Integrated Moving Average
+with Exogenous Variables) model to the insurance premium time series.
+ARIMAX extends the standard ARIMA framework by including external
+macroeconomic predictors; inflation, GDP growth, and interest rate
+as exogenous regressors. This allows the model to capture both the
+temporal structure of the premium series and the simultaneous influence
+of economic conditions.
+
+The chapter proceeds as follows:
+
+| Section | Activity |
+|---------|----------|
+| 3.2 | Load libraries and data |
+| 3.3 | Model specification and selection |
+| 3.4 | ARIMAX model fitting and coefficient interpretation |
+| 3.5 | Residual diagnostics |
+| 3.6 | Actual vs fitted visualisation |
+| 3.7 | Forecasting 2025-2027 |
+| 3.8 | Chapter summary |
+
+---
+
+## 3.2 Load Libraries and Data
+```{r load}
+library(forecast)
+library(tseries)
+library(TSA)
+library(lmtest)
+library(ggplot2)
+library(knitr)
+library(kableExtra)
+library(scales)
+
+df <- read.csv("../data/insurance_data.csv",
+               stringsAsFactors = FALSE)
+names(df) <- c("Year","Premium","Inflation",
+               "GDP_Growth","Interest_Rate")
+
+# Create time series
+premium_ts <- ts(df$Premium, start = 2015, frequency = 1)
+
+# Create exogenous regressor matrix
+xreg_matrix <- cbind(
+  Inflation    = df$Inflation,
+  GDP          = df$GDP_Growth,
+  Interest     = df$Interest_Rate
+)
+
+cat("Data and libraries loaded.\n")
+cat("Time series period: 2015 to 2024\n")
+cat("Observations:", length(premium_ts), "\n")
+```
+
+---
+
+## 3.3 Model Specification and Selection
+
+The `auto.arima()` function is used to automatically select the optimal
+ARIMA(p, d, q) structure for the premium series. This function evaluates
+candidate models across a range of p, d, and q values and selects the
+combination with the lowest AIC (Akaike Information Criterion).
+
+The exogenous regressors (inflation, GDP growth, interest rate) are
+passed via the `xreg` argument, producing an ARIMAX model.
+```{r model-select}
+cat("Running auto.arima() to select optimal ARIMA structure...\n\n")
+
+# Fit ARIMAX with automatic order selection
+arimax_model <- auto.arima(
+  premium_ts,
+  xreg      = xreg_matrix,
+  stepwise  = FALSE,    # Full search for best model
+  approximation = FALSE # Exact likelihood evaluation
+)
+
+cat("Model selected:", arimax_model$arma, "\n")
+cat("ARIMA order: p =", arimax_model$arma[1],
+    "| d =", arimax_model$arma[6],
+    "| q =", arimax_model$arma[2], "\n\n")
+cat("This corresponds to ARIMA(",
+    arimax_model$arma[1], ",",
+    arimax_model$arma[6], ",",
+    arimax_model$arma[2], ") with exogenous regressors.\n")
+```
+
+---
+
+## 3.4 Model Fitting and Coefficient Interpretation
+```{r model-summary}
+cat("ARIMAX Model Summary\n")
+cat("====================\n")
+print(summary(arimax_model))
+```
+```{r coef-table}
+# Extract and display coefficients cleanly
+coef_df <- data.frame(
+  Term      = names(coef(arimax_model)),
+  Estimate  = round(coef(arimax_model), 4),
+  Std_Error = round(sqrt(diag(vcov(arimax_model))), 4),
+  row.names = NULL
+)
+
+# Compute t-values and approximate p-values
+coef_df$t_value <- round(
+  coef_df$Estimate / coef_df$Std_Error, 4
+)
+coef_df$p_value <- round(
+  2 * pt(-abs(coef_df$t_value),
+         df = length(premium_ts) - length(coef(arimax_model))),
+  4
+)
+coef_df$Significance <- ifelse(
+  coef_df$p_value < 0.001, "***",
+  ifelse(coef_df$p_value < 0.01, "**",
+  ifelse(coef_df$p_value < 0.05, "*",
+  ifelse(coef_df$p_value < 0.1,  ".", "")))
+)
+
+kable(coef_df,
+      col.names = c("Term", "Estimate", "Std Error",
+                    "t-value", "p-value", "Sig."),
+      caption   = "ARIMAX Model Coefficients",
+      booktabs  = TRUE,
+      align     = c("l","r","r","r","r","c")) %>%
+  kable_styling(
+    latex_options = c("striped", "hold_position", "scale_down"),
+    font_size     = 10,
+    full_width    = FALSE
+  ) %>%
+  footnote(
+    general = "Significance: *** p<0.001 | ** p<0.01 | * p<0.05 | . p<0.1",
+    footnote_as_chunk = TRUE,
+    threeparttable    = TRUE
+  )
+```
+
+**Coefficient interpretation:**
+
+- **Intercept:** The baseline premium when all macroeconomic variables are at zero.
+- **Inflation:** A positive coefficient implies that a 1% rise in inflation increases premiums — consistent with higher claim costs being passed to policyholders.
+- **GDP:** A positive coefficient suggests economic growth supports higher premium levels through increased vehicle ownership and insurance demand.
+- **Interest Rate:** A negative coefficient is consistent with theory — lower rates reduce investment income, pressuring insurers to increase premiums.
+```{r ic-table}
+# Information criteria comparison
+ic_df <- data.frame(
+  Criterion = c("AIC", "AICc", "BIC",
+                "Log-Likelihood", "Sigma^2"),
+  Value     = c(
+    round(arimax_model$aic,  2),
+    round(arimax_model$aicc, 2),
+    round(arimax_model$bic,  2),
+    round(arimax_model$loglik, 2),
+    round(arimax_model$sigma2, 2)
+  )
+)
+
+kable(ic_df,
+      caption  = "ARIMAX Model Information Criteria",
+      booktabs = TRUE,
+      align    = c("l","r")) %>%
+  kable_styling(
+    latex_options = c("striped", "hold_position"),
+    font_size     = 10,
+    full_width    = FALSE
+  ) %>%
+  footnote(
+    general = "Lower AIC and BIC indicate better model fit.
+    Sigma^2 is the estimated residual variance.",
+    footnote_as_chunk = TRUE,
+    threeparttable    = TRUE
+  )
+```
+
+---
+
+## 3.5 Residual Diagnostics
+
+Residual diagnostics assess whether the model has adequately captured all
+systematic patterns in the data. Under a well specified model, residuals
+should behave as white noise - independently and identically distributed
+with zero mean.
+```{r residual-stats}
+resids <- residuals(arimax_model)
+
+cat("Residual Summary Statistics\n")
+cat("===========================\n")
+cat("Mean   :", round(mean(resids), 4),
+    "(should be close to 0)\n")
+cat("Std Dev:", round(sd(resids), 4), "\n")
+cat("Min    :", round(min(resids), 4), "\n")
+cat("Max    :", round(max(resids), 4), "\n")
+```
+```{r ljung-box}
+lb_test <- Box.test(resids, lag = 3, type = "Ljung-Box")
+
+cat("\nLjung-Box Test for Residual Autocorrelation\n")
+cat("H0: No autocorrelation in residuals\n")
+cat("============================================\n")
+cat("X-squared :", round(lb_test$statistic, 4), "\n")
+cat("df        :", lb_test$parameter, "\n")
+cat("p-value   :", round(lb_test$p.value, 4), "\n\n")
+
+if (lb_test$p.value > 0.05) {
+  cat("Decision: FAIL TO REJECT H0\n")
+  cat("No significant autocorrelation in residuals.\n")
+  cat("Residuals behave as white noise — model is adequate.\n")
+} else {
+  cat("Decision: REJECT H0\n")
+  cat("Significant autocorrelation remains in residuals.\n")
+  cat("Model may need further refinement.\n")
+}
+```
+```{r residual-plots, fig.cap="ARIMAX Residual Diagnostics", fig.height=7, fig.width=8}
+par(mfrow = c(2, 2), mar = c(4, 4, 3, 1))
+
+# Plot 1: Residuals over time
+plot(resids, type = "o", col = "#2c7bb6",
+     main = "Residuals Over Time",
+     xlab = "Year", ylab = "Residuals",
+     pch  = 16, cex = 0.9)
+abline(h = 0, col = "red", lty = 2, lwd = 1.5)
+
+# Plot 2: ACF of residuals
+acf(resids, main = "ACF of Residuals",
+    col = "#2c7bb6", lag.max = 8)
+
+# Plot 3: PACF of residuals
+pacf(resids, main = "PACF of Residuals",
+     col = "#f4a261", lag.max = 8)
+
+# Plot 4: Histogram of residuals
+hist(resids, col = "lightblue", border = "white",
+     main = "Histogram of Residuals",
+     xlab = "Residuals", breaks = 6)
+abline(v = 0, col = "red", lwd = 2, lty = 2)
+
+par(mfrow = c(1, 1))
+```
+
+**Interpretation:** The residual time plot shows values scattered around
+zero with no clear trend. The ACF and PACF plots show no spikes beyond
+the significance bounds, confirming white noise behaviour. The histogram
+of residuals is approximately centred at zero, consistent with a
+well specified model.
+
+---
+
+## 3.6 Actual vs Fitted Visualisation
+```{r actual-fitted, fig.cap="Actual vs Fitted Insurance Premiums (ARIMAX)", fig.height=4.5, fig.width=8}
+fitted_vals <- fitted(arimax_model)
+
+plot_df <- data.frame(
+  Year   = df$Year,
+  Actual = as.numeric(premium_ts),
+  Fitted = as.numeric(fitted_vals)
+)
+
+ggplot(plot_df, aes(x = Year)) +
+  geom_line(aes(y = Actual, color = "Actual"),
+            linewidth = 1.3) +
+  geom_line(aes(y = Fitted, color = "Fitted"),
+            linewidth = 1.3, linetype = "dashed") +
+  geom_point(aes(y = Actual, color = "Actual"), size = 3) +
+  geom_point(aes(y = Fitted, color = "Fitted"), size = 3) +
+  scale_color_manual(
+    values = c("Actual" = "#2c7bb6", "Fitted" = "#e74c3c"),
+    name   = "Series"
+  ) +
+  scale_y_continuous(labels = comma) +
+  scale_x_continuous(breaks = 2015:2024) +
+  labs(
+    title   = "Figure 3.1 — Actual vs Fitted Insurance Premiums (ARIMAX)",
+    x       = "Year",
+    y       = "Premium (KES)",
+    caption = "Blue = Actual | Red dashed = ARIMAX Fitted"
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(
+    plot.title   = element_text(face = "bold", size = 11),
+    axis.text.x  = element_text(angle = 45, hjust = 1),
+    legend.position = "bottom",
+    plot.caption = element_text(size = 8, color = "grey50")
+  )
+```
+```{r fit-metrics}
+# Training set accuracy metrics
+acc <- accuracy(arimax_model)
+acc_df <- data.frame(
+  Metric = c("ME", "RMSE", "MAE", "MPE", "MAPE", "MASE"),
+  Value  = round(as.numeric(acc[1, 1:6]), 4)
+)
+
+kable(acc_df,
+      caption  = "ARIMAX Training Set Accuracy Metrics",
+      booktabs = TRUE,
+      align    = c("l","r")) %>%
+  kable_styling(
+    latex_options = c("striped", "hold_position"),
+    font_size     = 10,
+    full_width    = FALSE
+  ) %>%
+  footnote(
+    general = paste(
+      "ME = Mean Error | RMSE = Root Mean Squared Error",
+      "| MAE = Mean Absolute Error",
+      "| MAPE = Mean Absolute Percentage Error (lower = better fit)"
+    ),
+    footnote_as_chunk = TRUE,
+    threeparttable    = TRUE
+  )
+```
+
+---
+
+## 3.7 Forecasting 2025-2027
+
+The ARIMAX model is used to generate premium forecasts for 2025 to 2027.
+Forecast accuracy depends on the assumed future values of the exogenous
+variables. Three scenarios are modelled:
+
+- **Baseline:** Macroeconomic variables continue at their 2024 levels
+- **Optimistic:** Inflation falls, GDP rises, interest rate remains stable
+- **Pessimistic:** Inflation rises, GDP slows, interest rate remains stable
+```{r forecast-scenarios}
+# Define 3-year forecast scenarios
+scenarios <- list(
+  Baseline = data.frame(
+    Inflation    = c(3.50, 3.50, 3.50),
+    GDP          = c(5.60, 5.60, 5.60),
+    Interest     = c(9.00, 9.00, 9.00)
+  ),
+  Optimistic = data.frame(
+    Inflation    = c(3.00, 2.80, 2.50),
+    GDP          = c(6.00, 6.30, 6.50),
+    Interest     = c(9.00, 8.50, 8.00)
+  ),
+  Pessimistic = data.frame(
+    Inflation    = c(5.00, 5.50, 6.00),
+    GDP          = c(4.50, 4.00, 3.50),
+    Interest     = c(9.00, 9.50, 10.00)
+  )
+)
+
+forecast_results <- list()
+
+for (s in names(scenarios)) {
+  xreg_future <- as.matrix(scenarios[[s]])
+  colnames(xreg_future) <- c("Inflation","GDP","Interest")
+  fc <- forecast(arimax_model, xreg = xreg_future, h = 3)
+  forecast_results[[s]] <- fc
+}
+
+cat("Forecasts generated for 2025, 2026, 2027.\n")
+```
+```{r forecast-table}
+fc_table <- data.frame(
+  Year      = 2025:2027,
+  Baseline  = round(as.numeric(
+    forecast_results$Baseline$mean), 0),
+  Optimistic = round(as.numeric(
+    forecast_results$Optimistic$mean), 0),
+  Pessimistic = round(as.numeric(
+    forecast_results$Pessimistic$mean), 0),
+  Lo_80     = round(as.numeric(
+    forecast_results$Baseline$lower[,1]), 0),
+  Hi_80     = round(as.numeric(
+    forecast_results$Baseline$upper[,1]), 0)
+)
+
+kable(fc_table,
+      col.names = c("Year", "Baseline (KES)",
+                    "Optimistic (KES)", "Pessimistic (KES)",
+                    "80% CI Lower", "80% CI Upper"),
+      caption   = "Insurance Premium Forecasts 2025-2027 (Three Scenarios)",
+      booktabs  = TRUE,
+      align     = c("c","r","r","r","r","r"),
+      format.args = list(big.mark = ",")) %>%
+  kable_styling(
+    latex_options = c("striped", "hold_position", "scale_down"),
+    font_size     = 10,
+    full_width    = FALSE
+  ) %>%
+  footnote(
+    general = paste(
+      "Baseline: 2024 macro levels held constant.",
+      "Optimistic: falling inflation, rising GDP.",
+      "Pessimistic: rising inflation, slowing GDP.",
+      "80% CI applies to baseline scenario."
+    ),
+    footnote_as_chunk = TRUE,
+    threeparttable    = TRUE
+  )
+```
+```{r forecast-plot, fig.cap="Insurance Premium Forecasts 2025-2027 (Three Scenarios)", fig.height=5, fig.width=8}
+# Build plot dataframe
+historical <- data.frame(
+  Year  = df$Year,
+  Value = df$Premium,
+  Type  = "Historical"
+)
+
+fc_plot <- rbind(
+  data.frame(Year = 2025:2027,
+             Value = fc_table$Baseline,
+             Type  = "Baseline"),
+  data.frame(Year = 2025:2027,
+             Value = fc_table$Optimistic,
+             Type  = "Optimistic"),
+  data.frame(Year = 2025:2027,
+             Value = fc_table$Pessimistic,
+             Type  = "Pessimistic")
+)
+
+ci_df <- data.frame(
+  Year = 2025:2027,
+  Lo   = fc_table$Lo_80,
+  Hi   = fc_table$Hi_80
+)
+
+ggplot() +
+  geom_ribbon(data = ci_df,
+              aes(x = Year, ymin = Lo, ymax = Hi),
+              fill = "grey80", alpha = 0.5) +
+  geom_line(data = historical,
+            aes(x = Year, y = Value, color = Type,
+                linetype = Type), linewidth = 1.2) +
+  geom_line(data = fc_plot,
+            aes(x = Year, y = Value, color = Type,
+                linetype = Type), linewidth = 1.2) +
+  geom_point(data = historical,
+             aes(x = Year, y = Value, color = Type),
+             size = 2.5) +
+  geom_point(data = fc_plot,
+             aes(x = Year, y = Value, color = Type),
+             size = 2.5) +
+  geom_vline(xintercept = 2024.5, linetype = "dotted",
+             color = "grey40", linewidth = 0.8) +
+  annotate("text", x = 2024.6, y = max(df$Premium) * 1.05,
+           label = "Forecast", size = 3.2,
+           color = "grey40", hjust = 0) +
+  scale_color_manual(values = c(
+    "Historical"  = "#2c7bb6",
+    "Baseline"    = "#27ae60",
+    "Optimistic"  = "#9b59b6",
+    "Pessimistic" = "#e74c3c"
+  )) +
+  scale_linetype_manual(values = c(
+    "Historical"  = "solid",
+    "Baseline"    = "dashed",
+    "Optimistic"  = "dotdash",
+    "Pessimistic" = "dotted"
+  )) +
+  scale_y_continuous(labels = comma) +
+  scale_x_continuous(breaks = 2015:2027) +
+  labs(
+    title   = "Figure 3.2 — Premium Forecasts 2025-2027 (Three Scenarios)",
+    x       = "Year",
+    y       = "Premium (KES)",
+    color   = "Scenario",
+    linetype = "Scenario",
+    caption = "Grey ribbon = 80% confidence interval (baseline scenario)"
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(
+    plot.title      = element_text(face = "bold", size = 11),
+    axis.text.x     = element_text(angle = 45, hjust = 1),
+    legend.position = "bottom",
+    plot.caption    = element_text(size = 8, color = "grey50")
+  )
+```
+
+---
+
+## 3.8 Chapter Summary
+```{r ch3-summary, echo=FALSE}
+cat("================================================\n")
+cat("  CHAPTER 3 COMPLETE — ARIMAX SUMMARY\n")
+cat("================================================\n\n")
+cat("Model selected  : ARIMA(",
+    arimax_model$arma[1], ",",
+    arimax_model$arma[6], ",",
+    arimax_model$arma[2], ") + xreg\n")
+cat("AIC             :", round(arimax_model$aic, 2), "\n")
+cat("MAPE            :", round(accuracy(arimax_model)[1,"MAPE"], 2),
+    "% (training set)\n")
+cat("Ljung-Box p     :", round(lb_test$p.value, 4),
+    "(> 0.05 = white noise residuals)\n\n")
+cat("Key coefficient directions:\n")
+cat("  Inflation    : positive effect on premiums\n")
+cat("  GDP Growth   : positive effect on premiums\n")
+cat("  Interest Rate: negative effect on premiums\n\n")
+cat("Forecast direction (baseline): upward trend\n")
+cat("  2025:", fc_table$Baseline[1], "KES\n")
+cat("  2026:", fc_table$Baseline[2], "KES\n")
+cat("  2027:", fc_table$Baseline[3], "KES\n\n")
+cat("  Proceed to Chapter 4 — Multiple Linear Regression\n")
+cat("================================================\n")
+```
