@@ -1,2 +1,12 @@
 *.csv filter=lfs diff=lfs merge=lfs -text
 *.pdf filter=lfs diff=lfs merge=lfs -text
+
+# Treat R scripts and RMarkdown as R
+*.R linguist-detectable=true
+*.Rmd linguist-language=R
+*.rmd linguist-language=R
+
+# Ignore non-code files in language stats
+*.csv linguist-vendored
+*.md linguist-vendored
+*.pdf linguist-vendored
