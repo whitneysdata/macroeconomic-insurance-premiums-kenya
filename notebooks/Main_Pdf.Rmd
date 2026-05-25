@@ -1,0 +1,54 @@
+---
+title: "Macroeconomic Insurance Premiums in Kenya"
+author:
+ - "Whitney Kemuma"
+date: |
+  2025
+  **Supervisor:** Dr Cynthia Mwende
+  Department of Mathematics and Actuarial Science, Kisii University
+output:
+  pdf_document:
+    latex_engine: xelatex
+    toc: true
+    toc_depth: 3
+    number_sections: true
+    fig_caption: true
+geometry: "left=2.5cm, right=2.5cm, top=2.5cm, bottom=2.5cm"
+header-includes:
+  - \usepackage{booktabs}
+  - \usepackage{float}
+  - \usepackage{amsmath}
+  - \usepackage{longtable}
+  - \usepackage{array}
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo      = TRUE,
+  message   = FALSE,
+  warning   = FALSE,
+  fig.pos   = "H",
+  fig.align = "center",
+  out.width = "90%",
+  fig.width = 8,
+  fig.height = 4.5
+)
+```
+
+# Chapter 0: Research Foundation
+```{r child="Chapter_0_Research_Foundation.Rmd"}
+```
+# Chapter 1: Data
+```{r child="Chapter_1_Data.Rmd"}
+```
+# Chapter 2: Exploratory Data Analysis
+```{r child="Chapter_2_EDA.Rmd"}
+```
+# Chapter 3: ARIMAX Model
+```{r child="Chapter_3_ARIMAX.Rmd"}
+```
+# Chapter 4: Regression Analysis
+```{r child="Chapter_4_Regression.Rmd"}
+```
+# Chapter 5: Conclusions
+```{r child="Chapter_5_Conclusions.Rmd"}
+```

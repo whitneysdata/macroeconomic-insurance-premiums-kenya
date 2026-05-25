@@ -3,7 +3,6 @@ title: "Modelling the Impact of Macroeconomic Factors on Insurance Premiums in K
 subtitle: "Chapter 2 — Exploratory Data Analysis"
 author:
  - "Whitney Kemuma"
- - "Shebunah Nyairabu"
 date: |
   2025
   **Supervisor:** Dr Cynthia Mwende
@@ -27,18 +26,7 @@ header-includes:
   - \usepackage{pdflscape}
   - \setlength{\LTcapwidth}{\textwidth}
 ---
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(
-  echo      = TRUE,
-  message   = FALSE,
-  warning   = FALSE,
-  fig.pos   = "H",
-  fig.align = "center",
-  out.width = "90%",
-  fig.width = 8,
-  fig.height = 4.5
-)
-```
+
 
 \newpage
 

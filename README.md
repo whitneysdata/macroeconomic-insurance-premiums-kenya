@@ -9,7 +9,7 @@
 # Modelling the Impact of Macroeconomic Factors on Insurance Premiums in Kenya
 ## Using Time Series Analysis and Multiple Linear Regression
 
-> **Authors:** Whitney Kemuma & Shebunah Nyairabu
+> **Authors:** Whitney Kemuma
 > **Supervisor:** Dr Cynthia Mwende
 > **Department:** Mathematics and Actuarial Science
 > **Institution:** Kisii University
@@ -217,8 +217,7 @@ Chapter_5_Conclusions.Rmd          <- Run fifth
 | Role | Name |
 |------|------|
 | Author | Whitney Kemuma |
-| Author | Shebunah Nyairabu |
-| Supervisor | Dr Cynthia Mwende |
+| Supervisor | Dr Cynthia Mwendee |
 | Institution | Kisii University — School of Pure and Applied Sciences |
 | Department | Mathematics and Actuarial Science |
 
