@@ -3,7 +3,7 @@
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
 ![Status](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)
 ![Institution](https://img.shields.io/badge/Institution-Kisii%20University-purple?style=flat-square)
-
+![Zenodo](https://zenodo.org/badge/DOI/10.5281/zenodo.20531649.svg)
 ---
 
 # Modelling the Impact of Macroeconomic Factors on Insurance Premiums in Kenya
